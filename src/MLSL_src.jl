@@ -1,12 +1,18 @@
 using Sobol
 using NLopt
+using PyPlot
 using SpecialFunctions
 using SparseArrays
 using LinearAlgebra
+using BenchmarkTools
+using PyPlot
 using Statistics
+using MultistartOptimization
 
 
 ### ALL FUNCTIONS NEEDED FOR SOBOL PT GENERATION AND MLSL
+
+
 
 # Generate an N-dimentional Sobol sequence of points
 function gen_sobol(Npts, Dims,lb,ub)
@@ -17,11 +23,9 @@ function gen_sobol(Npts, Dims,lb,ub)
     return sobol_array
 end
 
-
-
 # Generate 9-Dimentional schwefel test function:
 # Global min is: f(x) = 0 at x = (420.9687,...,420.9687)
-function schwefel_func9D(x)
+function schwefel_funcND(x)
     sum = 0
     Dims = length(x)
     for ii = 1:Dims
@@ -33,10 +37,8 @@ function schwefel_func9D(x)
 end
 
 
-
-
 # derivative of 9-Dimentional schwefel test function:
-function schwefel_func9D_der(x)
+function schwefel_funcND_der(x)
     hold = similar(x)
     for ii = 1:size(hold)[1]
         hold[ii] = -sin(sqrt(abs(x[ii]))) - (x[ii]*cos(sqrt(abs(x[ii])))*sign(x[ii])/(2*sqrt(abs(x[ii]))))
@@ -44,10 +46,8 @@ function schwefel_func9D_der(x)
     return hold
 end
 
-
-
 #  test function for 9d schwefel
-function testfunc_9d_shwef(x::Vector, grad::Vector)
+function testfunc_Nd_shwef(x::Vector, grad::Vector)
     if length(grad) > 0
         for i = 1:length(grad)
             grad[i] = schwefel_func9D_der(x)[i]
@@ -78,8 +78,6 @@ function shubert_func(x)
     return sum1 * sum2
        
 end
-
-
 
 
 # derivative of 2D shubert function
@@ -144,10 +142,8 @@ function testfunc_shub(x::Vector, grad::Vector)
 end
 
 
-
-
 ## optimizers for local phase of MLSL
-function local_search(x_init,lb,ub,dims,loc_alg,tol)
+function local_search(x_init,lb,ub,dims,loc_alg,tol,testfunc)
     
     opt = Opt(loc_alg, dims)
     opt.lower_bounds = lb
@@ -155,7 +151,7 @@ function local_search(x_init,lb,ub,dims,loc_alg,tol)
     opt.xtol_rel = tol
     opt.maxeval = 1000
 
-    opt.min_objective = testfunc_9d_shwef
+    opt.min_objective = testfunc
     
     
     (minf,minx,ret) = optimize(opt, x_init)
@@ -167,39 +163,35 @@ function local_search(x_init,lb,ub,dims,loc_alg,tol)
 end
 
 
-
-
-## test global optimizers
-function glob_test(lb,ub,dims,loc_alg,tol)
+## test global optimizers from Nlopt
+function glob_test(lb,ub,dims,loc_alg,tol,obj_func,glob_alg,maxvl)
     
     
     optloc = Opt(loc_alg, dims)
     optloc.lower_bounds = lb
     optloc.upper_bounds = ub
     optloc.xtol_rel = tol
-    optloc.maxeval = 1000
+    optloc.maxeval = maxvl
 
-    optloc.min_objective = testfunc_shub
+    optloc.min_objective = obj_func
     
-    opt = Opt(:G_MLSL_LDS, dims)
+    opt = Opt(glob_alg, dims)
     opt.lower_bounds = lb
     opt.upper_bounds = ub
     opt.xtol_rel = tol
-    opt.maxeval = 1000
+    opt.maxeval = maxvl
 
-    opt.min_objective = testfunc_shub
+    opt.min_objective = obj_func
     opt.population = 64*dims^2 # stay consistent with my version of MLSL
     opt.local_optimizer = optloc
     
     
-    (minf,minx,ret) = optimize(opt,[1.0, 1.0])
+    (minf,minx,ret) = optimize(opt,ones(dims))
     numevals = opt.numevals # the number of function evaluations
     
     return minf,minx,numevals
     
 end
-
-
 
 # sort the N Sobol points by objective function value and slice alpha*N points
 function sort_and_reduce(pts,Npts,func,alpha)
@@ -219,12 +211,10 @@ function sort_and_reduce(pts,Npts,func,alpha)
 end
 
 
-
 # return the critical distance
 function distance_metric(k,n_dims,Nr,sigma,omega_n,lb,ub)
     return (((abs(prod(ub - lb)))/omega_n)*(sigma*log(k*Nr))/(k*Nr))^(1/n_dims)
 end
-
 
 
 # return TRUE if the euclidean distance between two points is smaller
@@ -235,6 +225,12 @@ function is_close_euclidean(pt1,pt2,crit_dist)
     else
         return true
     end
+end
+
+
+# check if this local min has already been found and is it the set arr
+function check_if_same_min(arr, f_cand)
+    return f_cand in arr
 end
 
 
@@ -259,8 +255,7 @@ function PRS(Npts,Dims,objfunc,lb,ub,loc_alg,tol)
 end
 
 
-
-function MLSL(N_dims,num_objective_points,bb_lb,bb_ub,alpha_factor,ls_func,iter_MAX,sigma,loc_alg,tol)
+function MLSL(N_dims,num_objective_points,bb_lb,bb_ub,alpha_factor,ls_func,iter_MAX,sigma,loc_alg,tol,testfunc)
     
     #### Set some important parameters ###
     omega_n = (pi^(N_dims/2))/(gamma(1+(N_dims/2))) # precompute omega factor for crit dist
@@ -297,8 +292,8 @@ function MLSL(N_dims,num_objective_points,bb_lb,bb_ub,alpha_factor,ls_func,iter_
 
         for i = 1:reduced_num_pts
             if clusters[i] == 0
-                if W == 0
-                    lm,loc,fevals = local_search(reduced_pts[i,:],bb_lb,bb_ub,N_dims,loc_alg,tol)
+                if W == 0 ## BASE CASE
+                    lm,loc,fevals = local_search(reduced_pts[i,:],bb_lb,bb_ub,N_dims,loc_alg,tol,testfunc)
                     func_evals += fevals
                     N_evals += 1
                     local_mins[1] = lm
@@ -321,13 +316,15 @@ function MLSL(N_dims,num_objective_points,bb_lb,bb_ub,alpha_factor,ls_func,iter_
 
                 # if no cluster assignment found
                 if clusters[i] == 0
-                    lm,loc,fevals = local_search(reduced_pts[i,:],bb_lb,bb_ub,N_dims,loc_alg,tol)
+                    lm,loc,fevals = local_search(reduced_pts[i,:],bb_lb,bb_ub,N_dims,loc_alg,tol,testfunc)
                     func_evals += fevals
                     N_evals += 1
                     local_mins = [local_mins;lm]
                     local_min_locs = [local_min_locs;loc']
                     clusters[i] = 1   # assign next cluster
-                    W += 1
+                    if !check_if_same_min(local_mins, lm) # if minimum already in set, so not increment stopval
+                        W += 1
+                    end
                 end
 
             else
@@ -342,4 +339,5 @@ function MLSL(N_dims,num_objective_points,bb_lb,bb_ub,alpha_factor,ls_func,iter_
     glob_min = argmin(local_mins)
     return local_mins[glob_min], local_min_locs[glob_min,:], func_evals
 end
+
 

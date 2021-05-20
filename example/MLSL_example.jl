@@ -1,7 +1,7 @@
 include("../src/MLSL_src.jl")
 
 #### Set some important parameters ####
-N_dims = 7 # dimensionality of objective function
+N_dims = 3  # dimensionality of objective function
 num_objective_points = 64*N_dims^2  # number of LDS points to use (my rough formula)
 
 
@@ -20,19 +20,20 @@ bb_ub = 500.0 .* ones(N_dims)
 #bb_ub = [10.0, 10.0]
 ##############################################################
 
-#### state local algorithm and tolerance
+#### pick local algorithm and domain tolerance
 #### pick grad-free LN_BOBYQA or grad-based LD_VAR2,LD_SLSQP,LD_MMA
-loc_alg = :LD_MMA
+loc_alg = :LD_VAR2
 tol = 1e-3
 ####
 
 alpha_factor = 0.5
-ls_func = schwefel_func9D
+ls_func = schwefel_funcND
+testfunc = testfunc_Nd_shwef # specify the NLopt-styled objective function (will fix as is redundent)
 sigma = 2.0
 iter_MAX = 5
 #######################################
 
-globmin,loc,func_evals = MLSL(N_dims,num_objective_points,bb_lb,bb_ub,alpha_factor,ls_func,iter_MAX,sigma,loc_alg,tol)
+globmin,loc,func_evals = MLSL(N_dims,num_objective_points,bb_lb,bb_ub,alpha_factor,ls_func,iter_MAX,sigma,loc_alg,tol,testfunc)
 
 println("MLSL min is: ",globmin, " at: ",loc, " with ",func_evals," function evals")
 
