@@ -50,10 +50,10 @@ end
 function testfunc_Nd_shwef(x::Vector, grad::Vector)
     if length(grad) > 0
         for i = 1:length(grad)
-            grad[i] = schwefel_func9D_der(x)[i]
+            grad[i] = schwefel_funcND_der(x)[i]
         end
     end
-    return schwefel_func9D(x)
+    return schwefel_funcND(x)
 end
 
 # camel function for testing
@@ -131,15 +131,6 @@ function testfunc_6hc(x::Vector, grad::Vector)
     return six_hump_camel(x)
 end
 
-#  test function for 9d shwefel
-function testfunc_shub(x::Vector, grad::Vector)
-    if length(grad) > 0
-        # gradients for six hump camel
-        grad[1] = shubert_func_deriv(x)[1]
-        grad[2] = shubert_func_deriv(x)[1]
-    end
-    return shubert_func(x)
-end
 
 
 ## optimizers for local phase of MLSL
@@ -236,7 +227,7 @@ end
 
 
 # Basically just test a pure random search
-function PRS(Npts,Dims,objfunc,lb,ub,loc_alg,tol)
+function PRS(Npts,Dims,objfunc,lb,ub,loc_alg,tol,testfunc)
     func_evals = 0 # return total number of objective function evaluations
     holder = Array{Float64, 2}(undef,Npts,Dims+1)
     sobol_vect = gen_sobol(Npts, Dims,lb,ub)
@@ -244,7 +235,7 @@ function PRS(Npts,Dims,objfunc,lb,ub,loc_alg,tol)
         x_init = sobol_vect[iter,:]
         
         # perform local search on Sobol pt.
-        holder[iter,1],holder[iter,2:end],loc_func_evals = local_search(x_init,lb,ub,Dims,loc_alg,tol)
+        holder[iter,1],holder[iter,2:end],loc_func_evals = local_search(x_init,lb,ub,Dims,loc_alg,tol,testfunc)
         
         func_evals += loc_func_evals
     end
@@ -255,7 +246,7 @@ function PRS(Npts,Dims,objfunc,lb,ub,loc_alg,tol)
 end
 
 
-function MLSL(N_dims,num_objective_points,bb_lb,bb_ub,alpha_factor,ls_func,iter_MAX,sigma,loc_alg,tol,testfunc)
+function MLSL(N_dims,num_objective_points,bb_lb,bb_ub,alpha_factor,ls_func,iter_MAX,sigma,loc_alg,tol,testfuncc)
     
     #### Set some important parameters ###
     omega_n = (pi^(N_dims/2))/(gamma(1+(N_dims/2))) # precompute omega factor for crit dist
@@ -293,7 +284,7 @@ function MLSL(N_dims,num_objective_points,bb_lb,bb_ub,alpha_factor,ls_func,iter_
         for i = 1:reduced_num_pts
             if clusters[i] == 0
                 if W == 0 ## BASE CASE
-                    lm,loc,fevals = local_search(reduced_pts[i,:],bb_lb,bb_ub,N_dims,loc_alg,tol,testfunc)
+                    lm,loc,fevals = local_search(reduced_pts[i,:],bb_lb,bb_ub,N_dims,loc_alg,tol,testfuncc)
                     func_evals += fevals
                     N_evals += 1
                     local_mins[1] = lm
@@ -316,7 +307,7 @@ function MLSL(N_dims,num_objective_points,bb_lb,bb_ub,alpha_factor,ls_func,iter_
 
                 # if no cluster assignment found
                 if clusters[i] == 0
-                    lm,loc,fevals = local_search(reduced_pts[i,:],bb_lb,bb_ub,N_dims,loc_alg,tol,testfunc)
+                    lm,loc,fevals = local_search(reduced_pts[i,:],bb_lb,bb_ub,N_dims,loc_alg,tol,testfuncc)
                     func_evals += fevals
                     N_evals += 1
                     local_mins = [local_mins;lm]
@@ -339,5 +330,4 @@ function MLSL(N_dims,num_objective_points,bb_lb,bb_ub,alpha_factor,ls_func,iter_
     glob_min = argmin(local_mins)
     return local_mins[glob_min], local_min_locs[glob_min,:], func_evals
 end
-
 

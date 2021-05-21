@@ -37,5 +37,5 @@ globmin,loc,func_evals = MLSL(N_dims,num_objective_points,bb_lb,bb_ub,alpha_fact
 
 println("MLSL min is: ",globmin, " at: ",loc, " with ",func_evals," function evals")
 
-prsmin, prsloc,func_evals_prs = PRS(num_objective_points,N_dims,ls_func,bb_lb,bb_ub,loc_alg,tol)
+prsmin, prsloc,func_evals_prs = PRS(num_objective_points,N_dims,ls_func,bb_lb,bb_ub,loc_alg,tol,testfunc)
 println("PRS min is: ",prsmin, " at: ",prsloc, " with ",func_evals_prs," function evals")
